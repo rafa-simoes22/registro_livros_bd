@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -11,8 +13,9 @@ class Book {
   final String title;
   final String author;
   final String classification;
+  final String? coverImagePath;
 
-  Book({required this.id, required this.title, required this.author, required this.classification});
+  Book({required this.id, required this.title, required this.author, required this.classification, this.coverImagePath});
 
   Map<String, dynamic> toMap() {
     return {
@@ -20,6 +23,7 @@ class Book {
       'title': title,
       'author': author,
       'classification': classification,
+      'coverImagePath': coverImagePath,
     };
   }
 }
@@ -32,16 +36,16 @@ class DatabaseHelper {
   }
 
   Future<void> _openDatabase() async {
-    _database = await openDatabase(
-      join(await getDatabasesPath(), 'book_database.db'),
-      onCreate: (db, version) {
-        return db.execute(
-          'CREATE TABLE books(id INTEGER PRIMARY KEY, title TEXT, author TEXT, classification TEXT)',
-        );
-      },
-      version: 1,
-    );
-  }
+  _database = await openDatabase(
+    join(await getDatabasesPath(), 'book_database.db'),
+    onCreate: (db, version) {
+      return db.execute(
+        'CREATE TABLE books(id INTEGER PRIMARY KEY, title TEXT, author TEXT, classification TEXT, coverImagePath TEXT)',
+      );
+    },
+    version: 1,
+  );
+}
 
   Future<void> insertBook(Book book) async {
     await _openDatabase();
@@ -61,6 +65,7 @@ class DatabaseHelper {
         title: maps[i]['title'],
         author: maps[i]['author'],
         classification: maps[i]['classification'],
+        coverImagePath: maps[i]['coverImagePath'],
       );
     });
   }
@@ -90,6 +95,8 @@ class _BookListScreenState extends State<BookListScreen> {
   TextEditingController _classificationController = TextEditingController();
   List<Book> books = [];
 
+  File? _selectedImage;
+
   @override
   void initState() {
     super.initState();
@@ -101,12 +108,22 @@ class _BookListScreenState extends State<BookListScreen> {
     setState(() {});
   }
 
+  Future<void> _selectImage() async {
+    final pickedImage = await ImagePicker().getImage(source: ImageSource.gallery);
+    if (pickedImage != null) {
+      setState(() {
+        _selectedImage = File(pickedImage.path);
+      });
+    }
+  }
+
   void _addBook() async {
     final newBook = Book(
       id: DateTime.now().millisecondsSinceEpoch,
       title: _titleController.text,
       author: _authorController.text,
       classification: _classificationController.text,
+      coverImagePath: _selectedImage?.path,
     );
 
     await DatabaseHelper().insertBook(newBook);
@@ -115,6 +132,9 @@ class _BookListScreenState extends State<BookListScreen> {
     _titleController.clear();
     _authorController.clear();
     _classificationController.clear();
+    setState(() {
+      _selectedImage = null;
+    });
   }
 
   @override
@@ -129,6 +149,12 @@ class _BookListScreenState extends State<BookListScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
+                if (_selectedImage != null)
+                  Image.file(_selectedImage!, height: 100),
+                ElevatedButton(
+                  onPressed: _selectImage,
+                  child: Text('Selecionar Capa'),
+                ),
                 TextField(
                   controller: _titleController,
                   decoration: InputDecoration(labelText: 'Título'),
@@ -158,7 +184,7 @@ class _BookListScreenState extends State<BookListScreen> {
                   subtitle: Text('${book.author}, ${book.classification}'),
                   onTap: () {
                     Navigator.push(
-                      context, 
+                      context,
                       MaterialPageRoute(
                         builder: (context) => BookDetailScreen(book),
                       ),
@@ -193,6 +219,8 @@ class BookDetailScreen extends StatelessWidget {
             Text('Título: ${book.title}', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             Text('Autor: ${book.author}', style: TextStyle(fontSize: 18)),
             Text('Classificação: ${book.classification}', style: TextStyle(fontSize: 18)),
+            if (book.coverImagePath != null)
+              Image.file(File(book.coverImagePath!), height: 200),
           ],
         ),
       ),
